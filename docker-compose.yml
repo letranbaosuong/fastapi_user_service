@@ -1,0 +1,80 @@
+# Docker Compose - Setup PostgreSQL nhanh chóng
+# Chạy: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: user_service_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_service_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin (Optional - Database GUI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: user_service_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+
+# HƯỚNG DẪN:
+# 1. Start: docker-compose up -d
+# 2. Stop: docker-compose down
+# 3. View logs: docker-compose logs -f
+# 4. pgAdmin: http://localhost:5050 (admin@admin.com / admin)
+
+# 🎬 THAO TÁC CHÍNH XÁC:
+
+#   1. Mở http://localhost:5050
+#   2. Đăng nhập bằng: admin@admin.com / admin
+#   3. Add New Server
+#   4. General tab: Name = Local PostgreSQL
+#   5. Connection tab:
+#   Host: postgres
+#   Port: 5432
+#   Database: user_service_db
+#   Username: postgres     ← COPY CHÍNH XÁC
+#   Password: password     ← COPY CHÍNH XÁC
+#   ☑️ Save password
+#   6. Click Save
+
+# Các lệnh hữu ích:
+
+#   # Xem tất cả bảng
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "\dt"
+
+#   # Xem cấu trúc bảng users
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "\d+ users"
+
+#   # Xem cấu trúc bảng user_activities
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "\d+ user_activities"
+
+#   # Xem dữ liệu bảng users
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "SELECT * FROM users;"
+
+#   # Xem dữ liệu bảng user_activities
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "SELECT * FROM 
+#   user_activities;"
+
+#   # Đếm số user
+#   docker exec user_service_postgres psql -U postgres -d user_service_db -c "SELECT COUNT(*) FROM users;"
