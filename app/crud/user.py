@@ -10,6 +10,11 @@ KHÁI NIỆM CRUD:
 VÍ DỤ:
 crud.user.create(db, obj_in=user_data)
 => INSERT INTO users ...
+
+REDIS CACHE:
+- get_multi: Cache 5 phút
+- get_by_id: Cache 5 phút
+- Update/Delete: Tự động xóa cache
 """
 
 from typing import Optional, List
@@ -21,6 +26,7 @@ from app.models.user import User
 from app.models.user_activity import UserActivity
 from app.schemas.user import UserCreate, UserUpdate
 from app.core.security import get_password_hash, verify_password
+from app.core.redis import cache_result, invalidate_cache_on_change
 
 
 def get_by_email(db: Session, email: str) -> Optional[User]:
@@ -34,24 +40,28 @@ def get_by_email(db: Session, email: str) -> Optional[User]:
     return db.query(User).filter(User.email == email).first()
 
 
+@cache_result("user_by_id", ttl=300)
 def get_by_id(db: Session, user_id: int) -> Optional[User]:
     """
-    Lấy user theo ID
+    Lấy user theo ID (CACHED 5 phút)
 
     VÍ DỤ:
     user = get_by_id(db, 1)
     => SELECT * FROM users WHERE id = 1
+
+    CACHE: Kết quả được cache 5 phút
     """
     return db.query(User).filter(User.id == user_id).first()
 
 
+@cache_result("users_list", ttl=300)
 def get_multi(
     db: Session,
     skip: int = 0,
     limit: int = 100
 ) -> List[User]:
     """
-    Lấy danh sách users với pagination
+    Lấy danh sách users với pagination (CACHED 5 phút)
 
     VÍ DỤ:
     users = get_multi(db, skip=0, limit=10)
@@ -60,10 +70,13 @@ def get_multi(
     USE CASE: List users trong admin panel
     - Page 1: skip=0, limit=10
     - Page 2: skip=10, limit=10
+
+    CACHE: Kết quả được cache 5 phút theo skip/limit
     """
     return db.query(User).offset(skip).limit(limit).all()
 
 
+@cache_result("users_by_countries", ttl=300)
 def get_multi_by_countries(
     db: Session,
     countries: List[str],
@@ -71,7 +84,7 @@ def get_multi_by_countries(
     limit: int = 100
 ) -> List[User]:
     """
-    Lấy danh sách users theo nhiều quốc gia (multiple countries filter)
+    Lấy danh sách users theo nhiều quốc gia (CACHED 5 phút)
 
     VÍ DỤ:
     users = get_multi_by_countries(db, countries=["VN", "US", "TH"], skip=0, limit=10)
@@ -87,6 +100,8 @@ def get_multi_by_countries(
     PAGINATION:
     - Page 1: skip=0, limit=10
     - Page 2: skip=10, limit=10
+
+    CACHE: Kết quả được cache 5 phút theo countries/skip/limit
     """
     return db.query(User).filter(
         User.country.in_(countries)
@@ -135,9 +150,10 @@ def get_users_by_date_range(
     ).all()
 
 
+@invalidate_cache_on_change(["users_list:*", "users_by_countries:*", "user_by_id:*"])
 def create(db: Session, obj_in: UserCreate) -> User:
     """
-    Tạo user mới
+    Tạo user mới (INVALIDATE CACHE)
 
     VÍ DỤ:
     user_data = UserCreate(
@@ -153,6 +169,9 @@ def create(db: Session, obj_in: UserCreate) -> User:
     3. Add to database
     4. Commit transaction
     5. Refresh to get ID
+    6. Xóa cache users (vì có user mới)
+
+    CACHE INVALIDATION: Xóa cache users_list, users_by_countries
     """
     db_obj = User(
         email=obj_in.email,
@@ -168,13 +187,14 @@ def create(db: Session, obj_in: UserCreate) -> User:
     return db_obj
 
 
+@invalidate_cache_on_change(["users_list:*", "users_by_countries:*", "user_by_id:*"])
 def update(
     db: Session,
     db_obj: User,
     obj_in: UserUpdate
 ) -> User:
     """
-    Update user
+    Update user (INVALIDATE CACHE)
 
     VÍ DỤ:
     user = get_by_id(db, 1)
@@ -185,6 +205,9 @@ def update(
     1. Chỉ update fields có giá trị (không None)
     2. Commit changes
     3. Return updated object
+    4. Xóa cache users (vì data đã thay đổi)
+
+    CACHE INVALIDATION: Xóa cache users_list, users_by_countries, user_by_id
     """
     update_data = obj_in.model_dump(exclude_unset=True)
 
@@ -197,15 +220,20 @@ def update(
     return db_obj
 
 
+@invalidate_cache_on_change(["users_list:*", "users_by_countries:*", "user_by_id:*"])
 def delete(db: Session, user_id: int) -> Optional[User]:
     """
-    Xóa user
+    Xóa user (INVALIDATE CACHE)
 
     VÍ DỤ:
     deleted_user = delete(db, user_id=1)
     => DELETE FROM users WHERE id = 1
 
-    LƯU Ý: Cascade delete - tất cả activities của user cũng bị xóa
+    LƯU Ý:
+    - Cascade delete: tất cả activities của user cũng bị xóa
+    - Cache invalidation: xóa cache users
+
+    CACHE INVALIDATION: Xóa cache users_list, users_by_countries, user_by_id
     """
     db_obj = get_by_id(db, user_id)
     if db_obj:

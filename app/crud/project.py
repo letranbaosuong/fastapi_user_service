@@ -11,6 +11,12 @@ KHÁI NIỆM CRUD:
 VÍ DỤ:
 crud.project.create(db, obj_in=project_data)
 => INSERT INTO projects ...
+
+REDIS CACHE:
+- get_multi: Cache 5 phút
+- get_by_id: Cache 5 phút
+- get_projects_by_user: Cache 5 phút
+- Update/Delete/Add/Remove members: Tự động xóa cache
 """
 
 from typing import Optional, List
@@ -20,15 +26,19 @@ from sqlalchemy import and_
 from app.models.project import Project, user_projects
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.core.redis import cache_result, invalidate_cache_on_change
 
 
+@cache_result("project_by_id", ttl=300)
 def get_by_id(db: Session, project_id: int) -> Optional[Project]:
     """
-    Lấy project theo ID
+    Lấy project theo ID (CACHED 5 phút)
 
     VÍ DỤ:
     project = get_by_id(db, 1)
     => SELECT * FROM projects WHERE id = 1
+
+    CACHE: Kết quả được cache 5 phút
     """
     return db.query(Project).filter(Project.id == project_id).first()
 
@@ -40,17 +50,20 @@ def get_by_name(db: Session, name: str) -> Optional[Project]:
     VÍ DỤ:
     project = get_by_name(db, "Website Redesign")
     => SELECT * FROM projects WHERE name = 'Website Redesign'
+
+    LƯU Ý: Không cache vì thường dùng cho validation (check duplicate)
     """
     return db.query(Project).filter(Project.name == name).first()
 
 
+@cache_result("projects_list", ttl=300)
 def get_multi(
     db: Session,
     skip: int = 0,
     limit: int = 100
 ) -> List[Project]:
     """
-    Lấy danh sách projects với pagination
+    Lấy danh sách projects với pagination (CACHED 5 phút)
 
     VÍ DỤ:
     projects = get_multi(db, skip=0, limit=10)
@@ -59,10 +72,13 @@ def get_multi(
     USE CASE: List projects trong admin panel
     - Page 1: skip=0, limit=10
     - Page 2: skip=10, limit=10
+
+    CACHE: Kết quả được cache 5 phút theo skip/limit
     """
     return db.query(Project).offset(skip).limit(limit).all()
 
 
+@cache_result("projects_by_status", ttl=300)
 def get_projects_by_status(
     db: Session,
     status: str,
@@ -70,7 +86,7 @@ def get_projects_by_status(
     limit: int = 100
 ) -> List[Project]:
     """
-    Lấy projects theo status
+    Lấy projects theo status (CACHED 5 phút)
 
     VÍ DỤ:
     projects = get_projects_by_status(db, "in_progress")
@@ -79,12 +95,15 @@ def get_projects_by_status(
     USE CASE:
     - Xem các project đang active
     - Filter projects theo trạng thái
+
+    CACHE: Kết quả được cache 5 phút theo status/skip/limit
     """
     return db.query(Project).filter(
         Project.status == status
     ).offset(skip).limit(limit).all()
 
 
+@cache_result("projects_by_user", ttl=300)
 def get_projects_by_user(
     db: Session,
     user_id: int,
@@ -92,7 +111,7 @@ def get_projects_by_user(
     limit: int = 100
 ) -> List[Project]:
     """
-    Lấy tất cả projects mà user tham gia
+    Lấy tất cả projects mà user tham gia (CACHED 5 phút)
 
     VÍ DỤ:
     projects = get_projects_by_user(db, user_id=1)
@@ -103,6 +122,8 @@ def get_projects_by_user(
     USE CASE:
     - Xem danh sách projects của user
     - User dashboard
+
+    CACHE: Kết quả được cache 5 phút theo user_id/skip/limit
     """
     return db.query(Project).join(
         user_projects
@@ -111,6 +132,7 @@ def get_projects_by_user(
     ).offset(skip).limit(limit).all()
 
 
+@invalidate_cache_on_change(["projects_list:*", "projects_by_status:*", "projects_by_user:*", "project_by_id:*"])
 def create(db: Session, obj_in: ProjectCreate, owner_id: int) -> Project:
     """
     Tạo project mới và add owner vào project
@@ -149,6 +171,7 @@ def create(db: Session, obj_in: ProjectCreate, owner_id: int) -> Project:
     return db_obj
 
 
+@invalidate_cache_on_change(["projects_list:*", "projects_by_status:*", "projects_by_user:*", "project_by_id:*"])
 def update(
     db: Session,
     db_obj: Project,
@@ -178,6 +201,7 @@ def update(
     return db_obj
 
 
+@invalidate_cache_on_change(["projects_list:*", "projects_by_status:*", "projects_by_user:*", "project_by_id:*"])
 def delete(db: Session, project_id: int) -> Optional[Project]:
     """
     Xóa project
@@ -195,6 +219,7 @@ def delete(db: Session, project_id: int) -> Optional[Project]:
     return db_obj
 
 
+@invalidate_cache_on_change(["projects_by_user:*", "project_by_id:*"])
 def add_member(
     db: Session,
     project_id: int,
@@ -240,6 +265,7 @@ def add_member(
     return True
 
 
+@invalidate_cache_on_change(["projects_by_user:*", "project_by_id:*"])
 def remove_member(
     db: Session,
     project_id: int,

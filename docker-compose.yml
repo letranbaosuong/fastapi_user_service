@@ -22,20 +22,44 @@ services:
       timeout: 5s
       retries: 5
 
-  # pgAdmin (Optional - Database GUI)
+  # pgAdmin (Database Management GUI)
+  # Access: http://localhost:5050
+  # Login: admin@admin.com / admin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: user_service_pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
       - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
     depends_on:
       - postgres
+    restart: unless-stopped
+
+  # Redis Cache - Cache data trong 5 phút
+  redis:
+    image: redis:7-alpine
+    container_name: user_service_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   postgres_data:
+  redis_data:
+  pgadmin_data:
 
 # HƯỚNG DẪN:
 # 1. Start: docker-compose up -d
