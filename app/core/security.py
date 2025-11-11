@@ -18,6 +18,32 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _truncate_password(password: str, max_bytes: int = 72) -> str:
+    """
+    Truncate password để phù hợp với giới hạn của bcrypt (72 bytes)
+
+    KHÁI NIỆM:
+    - bcrypt có giới hạn 72 bytes cho password
+    - Nếu password dài hơn, cần truncate để tránh ValueError
+
+    VÍ DỤ:
+    Input: "very_long_password_that_exceeds_72_bytes..." (100 bytes)
+    Output: "very_long_password_that_exceeds_72_bytes..." (72 bytes)
+
+    LƯU Ý:
+    - Truncate theo bytes, không phải characters (vì UTF-8 multi-byte)
+    - Đảm bảo không cắt giữa multi-byte character
+    """
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) <= max_bytes:
+        return password
+
+    # Truncate và decode, xử lý trường hợp cắt giữa multi-byte character
+    truncated = password_bytes[:max_bytes]
+    # Decode với errors='ignore' để bỏ qua byte cuối cùng nếu bị cắt giữa character
+    return truncated.decode('utf-8', errors='ignore')
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     So sánh plain password với hashed password
@@ -26,8 +52,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     plain: "mypassword123"
     hashed: "$2b$12$KIXn8..."
     return: True nếu khớp
+
+    LƯU Ý:
+    - Tự động truncate password về 72 bytes (giới hạn của bcrypt)
+    - Đảm bảo không bị ValueError khi password quá dài
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    # Truncate password trước khi verify
+    truncated_password = _truncate_password(plain_password)
+    return pwd_context.verify(truncated_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
@@ -37,8 +69,14 @@ def get_password_hash(password: str) -> str:
     VÍ DỤ:
     Input: "mypassword123"
     Output: "$2b$12$KIXn8.../9xRLrQYXU2koOe"
+
+    LƯU Ý:
+    - Tự động truncate password về 72 bytes (giới hạn của bcrypt)
+    - Đảm bảo không bị ValueError khi password quá dài
     """
-    return pwd_context.hash(password)
+    # Truncate password trước khi hash
+    truncated_password = _truncate_password(password)
+    return pwd_context.hash(truncated_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
