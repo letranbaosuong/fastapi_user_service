@@ -62,5 +62,13 @@ class User(Base):
     # VÍ DỤ: user.activities sẽ trả về list các activity của user này
     activities = relationship("UserActivity", back_populates="user", cascade="all, delete-orphan")
 
+    # RELATIONSHIP: Many-to-Many với Project
+    # VÍ DỤ: user.projects sẽ trả về list các project mà user tham gia
+    projects = relationship(
+        "Project",
+        secondary="user_projects",
+        back_populates="members"
+    )
+
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

@@ -7,7 +7,7 @@ KHÁI NIỆM:
 """
 
 from fastapi import APIRouter
-from app.api.endpoints import auth, users, activities, admin
+from app.api.endpoints import auth, users, activities, admin, projects
 
 api_router = APIRouter()
 
@@ -18,6 +18,10 @@ api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 # User routes
 # VÍ DỤ: /api/v1/users, /api/v1/users/1
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+
+# Project routes
+# VÍ DỤ: /api/v1/projects, /api/v1/projects/1, /api/v1/projects/1/members
+api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 
 # Activity routes
 # VÍ DỤ: /api/v1/users/1/activities
